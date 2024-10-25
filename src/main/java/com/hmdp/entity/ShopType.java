@@ -25,6 +25,7 @@ import java.time.LocalDateTime;
 @TableName("tb_shop_type")
 public class ShopType implements Serializable {
 
+
     private static final long serialVersionUID = 1L;
 
     /**
