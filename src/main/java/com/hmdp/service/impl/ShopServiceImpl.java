@@ -11,6 +11,7 @@ import com.hmdp.entity.Shop;
 import com.hmdp.mapper.ShopMapper;
 import com.hmdp.service.IShopService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.utils.CacheClient;
 import com.hmdp.utils.RedisData;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -38,21 +39,30 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
+    @Resource
+    private CacheClient cacheClient;
+
     @Override
     public Result queryById(Long id) {
 
         //解决缓存穿透
-        /*Shop shop = queryWithPassThrough(id);*/
+        Shop shop = cacheClient.queryWithPassThrough(CACHE_SHOP_KEY, id, Shop.class, this::getById,
+                CACHE_SHOP_TTL, TimeUnit.MINUTES);
 
-        //基于互斥锁解决缓存击穿
-         Shop shop = queryWithMutex(id);
-         if(shop == null){
+        // 互斥锁解决缓存击穿
+        // Shop shop = cacheClient
+        //         .queryWithMutex(CACHE_SHOP_KEY, id, Shop.class, this::getById, CACHE_SHOP_TTL, TimeUnit.MINUTES);
+
+        //基于逻辑过期时间解决缓存击穿
+        /*Shop shop1 = cacheClient.queryWithLogicExpire(CACHE_SHOP_KEY, id, Shop.class, this::getById,
+                CACHE_SHOP_TTL, TimeUnit.MINUTES);*/
+        if(shop == null){
              return Result.fail("店铺不存在");
          }
          return Result.ok(shop);
     }
 
-    //利用逻辑过期时间解决缓存击穿问题
+    /*//利用逻辑过期时间解决缓存击穿问题
     private static final ExecutorService CACHE_REBUILD_EXECUTOR = Executors.newFixedThreadPool(10);
     private Shop queryWithLogicExpire(Long id) {
         String key = CACHE_SHOP_KEY+id;
@@ -72,25 +82,23 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         }
 
         //过期，则尝试获得锁，开启线程去更新数据
-        boolean isLock = tryLock(LOCK_SHOP_KEY);
+        boolean isLock = tryLock(LOCK_KEY);
         //获取锁成功
         if(isLock){
             CACHE_REBUILD_EXECUTOR.submit(() -> {
                 //重建缓存
                 try {
-                    this.saveShop2Redis(id,LOCK_SHOP_TTL);
+                    this.saveShop2Redis(id,LOCK_TTL);
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 } finally {
-                    unlock(LOCK_SHOP_KEY);
+                    unlock(LOCK_KEY);
                 }
             });
         }
 
         //返回商铺信息，无论过期与否
         return shop;
-
-
     }
 
 
@@ -117,7 +125,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
         //实现重构缓存
         //先尝试获取锁
-        String lockKey = LOCK_SHOP_KEY+id;
+        String lockKey = LOCK_KEY+id;
         Shop shopById = null;
         try {
 
@@ -172,13 +180,13 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     }
 
     private boolean tryLock(String key) {
-        Boolean flag = stringRedisTemplate.opsForValue().setIfAbsent(key, "1",  LOCK_SHOP_TTL, TimeUnit.SECONDS);
+        Boolean flag = stringRedisTemplate.opsForValue().setIfAbsent(key, "1",  LOCK_TTL, TimeUnit.SECONDS);
         return BooleanUtil.isTrue(flag);
     }
 
     private void unlock(String key) {
         stringRedisTemplate.delete(key);
-    }
+    }*/
 
 
 
