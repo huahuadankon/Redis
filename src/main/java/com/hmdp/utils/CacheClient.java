@@ -96,7 +96,7 @@ public class CacheClient {
         }
 
 
-        String lockKey = LOCK_KEY+id;
+        String lockKey = LOCK_SHOP_KEY+id;
         //过期，则尝试获得锁，开启线程去更新数据
         boolean isLock = tryLock(lockKey);
         //获取锁成功
@@ -137,7 +137,7 @@ public class CacheClient {
 
         // 4.实现缓存重建
         // 4.1.获取互斥锁
-        String lockKey = LOCK_KEY + id;
+        String lockKey = LOCK_SHOP_KEY + id;
         R r = null;
         try {
             boolean isLock = tryLock(lockKey);

@@ -8,8 +8,12 @@ import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisIdWorker;
+import com.hmdp.utils.SimpleRedisLock;
 import com.hmdp.utils.UserHolder;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.aop.framework.AopContext;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +33,12 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     @Resource
     private ISeckillVoucherService seckillVoucherService;
+
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
+
+    @Resource
+    private RedissonClient redissonClient;
 
 
     @Resource
@@ -54,11 +64,30 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return Result.fail("库存不足！");
         }
         Long userId = UserHolder.getUser().getId();
-        synchronized (userId.toString().intern()) {//通过 toString().intern() 将 Long 转成唯一的字符串实例，只是toString，仍然会new
+        /*synchronized (userId.toString().intern()) {//通过 toString().intern() 将 Long 转成唯一的字符串实例，只是toString，仍然会new
             //将创建订单交给代理对象执行，才会触发Spring的事务管理，因为Spring的事务管理是通过代理对象完成的
             IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
             return proxy.createVoucherOrder(voucherId);
+        }* 无法解决分布式需求*/
+        /*SimpleRedisLock redisLock = new SimpleRedisLock(stringRedisTemplate, "order:"+userId);*/
+        RLock lock = redissonClient.getLock("lock:order:" + userId);//利用Redisson实现获取锁
+        boolean tryLock = lock.tryLock();
+        //尝试获取锁
+        if (!tryLock) {
+            //失败
+            return Result.fail("你不能重复下单");
         }
+        try {
+            //将创建订单交给代理对象执行，才会触发Spring的事务管理，因为Spring的事务管理是通过代理对象完成的
+            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
+            return proxy.createVoucherOrder(voucherId);
+        } catch (IllegalStateException e) {
+            throw new RuntimeException(e);
+        } finally {
+            lock.unlock();
+        }
+
+
     }
     //将锁加在方法内部可能导致事务未提交时锁已经释放，这种情况在高并发环境下会带来数据一致性问题。
 
