@@ -151,6 +151,8 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 
     @Override
     public Result queryBlogOfFollow(Long max, Integer offset) {
+        //这里采用的是滚动刷新机制，向上滑就是获取当前的时间戳也就是最大值，偏移量默认为0，即在Redis中排名最高开始查，
+        //也就是最新发布的，往下拉，进入新的分页就以上一次查出的最小值作为最大值，并根据是否有重复分数（时间戳）调整偏移量。
 
         // 1.获取当前用户
         Long userId = UserHolder.getUser().getId();
